@@ -12,11 +12,14 @@ Also, for those looking to merge this into the kernel, I advise you to do it car
 See https://github.com/marcosjrvrael/hid-havit-mouse-module for example.
 
 ## Installation
-The following commands will build and install the driver:
+The following commands will build and install the driver. 
+*Note: CachyOS users must use the LLVM toolchain flags as shown below:*
+
 ```bash
 make CC=clang HOSTCC=clang LD=ld.lld LLVM=1
 sudo make install
-```
+# Manually load the driver for the first time
+sudo modprobe hid-rakk-dasig-x
 
 ## Removal
 To remove the driver, use the following command:
