@@ -30,12 +30,26 @@ static const __u8 rakk_dasig_x_rdesc_fixed[] = {
 };
 
 static const __u8 *rakk_dasig_x_report_fixup(struct hid_device *hdev, __u8 *rdesc, unsigned int *rsize) {
-    if ((*rsize == RAKK_DASIG_X_WIRED_RDESC_LENGTH || *rsize == RAKK_DASIG_X_DONGLE_RDESC_LENGTH) 
-        && memcmp(rdesc, rakk_dasig_x_rdesc_fixed, RAKK_DAS_X_FAULT_OFFSET) == 0) {
-        
-        hid_info(hdev, "Fixing up Rakk Dasig-X button count\n");
-        *rsize = sizeof(rakk_dasig_x_rdesc_fixed);
-        return rakk_dasig_x_rdesc_fixed;
+    bool is_bluetooth = (hdev->bus == BUS_BLUETOOTH);
+    bool is_usb = (hdev->bus == BUS_USB);
+
+    if (is_usb) {
+        if (hdev->vendor == USB_VENDOR_ID_RAKK && 
+           (hdev->product == USB_DEVICE_ID_RAKK_DASIG_X || 
+            hdev->product == USB_DEVICE_ID_RAKK_DASIG_X_DONGLE)) {
+            
+            hid_info(hdev, "Fixing up Rakk Dasig-X (USB/Dongle) button count\n");
+            *rsize = sizeof(rakk_dasig_x_rdesc_fixed);
+            return rakk_dasig_x_rdesc_fixed;
+        }
+    }
+
+    if (is_bluetooth && *rsize >= 25) {
+        if (rdesc[14] == 0x19 && rdesc[15] == 0x01 && rdesc[16] == 0x29) {
+            hid_info(hdev, "Fixing up Rakk Dasig-X (Bluetooth) side buttons\n");
+            rdesc[17] = 0x05; 
+            rdesc[25] = 0x05; 
+        }
     }
     return rdesc;
 }
