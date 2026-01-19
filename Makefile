@@ -1,12 +1,14 @@
-obj-m += hid-rakk-bulus.o
+obj-m += hid-rakk-dasig-x.o
+KDIR := /lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
+
 all:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
-	zstd -f hid-rakk-bulus.ko
+	$(MAKE) -C $(KDIR) M=$(PWD) modules
+	zstd -f hid-rakk-dasig-x.ko
+
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	$(MAKE) -C $(KDIR) M=$(PWD) clean
+
 install:
-	cp $(shell pwd)/hid-rakk-bulus.ko.zst /lib/modules/$(shell uname -r)/kernel/drivers/hid/
-	depmod -a
-uninstall:
-	rm $(shell pwd)/hid-rakk-bulus.ko.zst /lib/modules/$(shell uname -r)/kernel/drivers/hid/hid-rakk-bulus.ko.zst
+	cp $(PWD)/hid-rakk-dasig-x.ko.zst /lib/modules/$(shell uname -r)/kernel/drivers/hid/
 	depmod -a

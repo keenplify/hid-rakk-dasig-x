@@ -1,11 +1,12 @@
-# HID Driver for Rakk Bulus
+# HID Driver for Rakk Dasig X
 ## Disclaimer
-This project was tested and is initially known to work on **Linux Mint 22.1 x86_64** with **Kernel 6.8.0-60-generic**.
+This project was tested and is initially known to work on **Cachy OS x86_64** with **Kernel 6.18.6-2-cachyos**.
+This is forked from https://github.com/cedoromal/hid-rakk-bulus and was modified by me and Gemini AI to work for Rakk Dasig X variant.
 
 While it is possible to make this work on other distros and kernel versions, I cannot fully guarantee it.
 
 ### Distros and kernel versions tested and working (I'll put this list somewhere else in the repo eventually):
-- Linux Mint 22.1 x86_64 (6.8.0-xx-generic)
+- Cachy OS x86_64 (6.18.6-2-cachyos)
 
 Also, for those looking to merge this into the kernel, I advise you to do it carefully since apparently the Vendor ID and Device ID for this is also used by others.
 See https://github.com/marcosjrvrael/hid-havit-mouse-module for example.
@@ -13,7 +14,7 @@ See https://github.com/marcosjrvrael/hid-havit-mouse-module for example.
 ## Installation
 The following commands will build and install the driver:
 ```bash
-make
+make CC=clang HOSTCC=clang LD=ld.lld LLVM=1
 sudo make install
 ```
 
@@ -25,7 +26,7 @@ sudo make uninstall
 
 If the driver is already loaded, you might want to unload it using the following command:
 ```bash
-sudo rmmod hid-rakk-bulus
+sudo rmmod hid-rakk-dasig-x
 ```
 
 ## Cleanup
@@ -39,3 +40,4 @@ This project is heavily inspired by the following projects:
 - https://github.com/matega/hid_mimouse
 - https://github.com/torvalds/linux/blob/master/drivers/hid/hid-xiaomi.c
 - https://github.com/marcosjrvrael/hid-havit-mouse-module
+- https://github.com/cedoromal/hid-rakk-bulus
