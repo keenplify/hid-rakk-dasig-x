@@ -28,38 +28,30 @@ static const __u8 rakk_dasig_x_rdesc_fixed[] = {
 };
 
 static const __u8 *rakk_dasig_x_report_fixup(struct hid_device *hdev, __u8 *rdesc, unsigned int *rsize) {
-    bool is_bluetooth = (hdev->bus == BUS_BLUETOOTH);
-    bool is_usb = (hdev->bus == BUS_USB);
-
-    /* 1. Wired Fix: Wired mode usually needs the full descriptor swap */
-    if (is_usb && hdev->product == USB_DEVICE_ID_RAKK_DASIG_X) {
-        if (*rsize == RAKK_DASIG_X_WIRED_RDESC_LENGTH) {
-            hid_info(hdev, "Fixing up Rakk Dasig-X (Wired) button count\n");
-            *rsize = sizeof(rakk_dasig_x_rdesc_fixed);
-            return rakk_dasig_x_rdesc_fixed;
-        }
-    }
-
-    /* 2. Dongle & Bluetooth Surgical Fix:
-     * This patches the descriptor in-place without deleting Report IDs for DPI/Media keys.
-     * We look for the Button Usage Range pattern: 0x05 0x09 0x19 0x01 0x29 0x03
+    /* * We search for the pattern: 0x05 0x09 (Usage Page: Button) 
+     * followed by 0x19 0x01 (Usage Min: 1) and 0x29 0x03 (Usage Max: 3).
+     * This exists in all 3 modes (Wired, Dongle, BT).
      */
-    if ((is_bluetooth || (is_usb && hdev->product == USB_DEVICE_ID_RAKK_DASIG_X_DONGLE)) && *rsize >= 30) {
+    if (*rsize >= 30) {
         for (int i = 0; i < *rsize - 6; i++) {
-            if (rdesc[i] == 0x05 && rdesc[i+1] == 0x09 && rdesc[i+2] == 0x19 && 
-                rdesc[i+3] == 0x01 && rdesc[i+4] == 0x29 && rdesc[i+5] == 0x03) {
+            if (rdesc[i] == 0x05 && rdesc[i+1] == 0x09 && 
+                rdesc[i+2] == 0x19 && rdesc[i+3] == 0x01 && 
+                rdesc[i+4] == 0x29 && rdesc[i+5] == 0x03) {
                 
-                hid_info(hdev, "Surgically fixing Rakk Dasig-X (%s) buttons\n", 
-                         is_bluetooth ? "Bluetooth" : "Dongle");
+                hid_info(hdev, "Surgically fixing Rakk Dasig-X buttons (Offset %d)\n", i);
                 
-                rdesc[i+5] = 0x05; // Change Usage Max from 3 to 5
+                /* Change Usage Maximum from 3 to 5 */
+                rdesc[i+5] = 0x05; 
                 
                 /* Find the next Report Count (0x95) and change it from 5 to 5 
-                 * (ensures 5 bits are allocated for 5 buttons) */
-                if (rdesc[i+10] == 0x95) {
+                 * This ensures the kernel expects 5 bits of data for 5 buttons. */
+                if (i + 11 < *rsize && rdesc[i+10] == 0x95) {
                     rdesc[i+11] = 0x05;
+                    hid_info(hdev, "Adjusted Report Count to 5\n");
                 }
-                break; 
+                
+                /* We found and fixed it, so we can stop searching */
+                return rdesc;
             }
         }
     }
