@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * HID driver for Rakk Dasig X
- *
- * Updated for Rakk Dasig X (Telink variant)
  */
 
 #include <linux/hid.h>
@@ -33,24 +31,39 @@ static const __u8 *rakk_dasig_x_report_fixup(struct hid_device *hdev, __u8 *rdes
     bool is_bluetooth = (hdev->bus == BUS_BLUETOOTH);
     bool is_usb = (hdev->bus == BUS_USB);
 
-    if (is_usb) {
-        if (hdev->vendor == USB_VENDOR_ID_RAKK && 
-           (hdev->product == USB_DEVICE_ID_RAKK_DASIG_X || 
-            hdev->product == USB_DEVICE_ID_RAKK_DASIG_X_DONGLE)) {
-            
-            hid_info(hdev, "Fixing up Rakk Dasig-X (USB/Dongle) button count\n");
+    /* 1. Wired Fix: Wired mode usually needs the full descriptor swap */
+    if (is_usb && hdev->product == USB_DEVICE_ID_RAKK_DASIG_X) {
+        if (*rsize == RAKK_DASIG_X_WIRED_RDESC_LENGTH) {
+            hid_info(hdev, "Fixing up Rakk Dasig-X (Wired) button count\n");
             *rsize = sizeof(rakk_dasig_x_rdesc_fixed);
             return rakk_dasig_x_rdesc_fixed;
         }
     }
 
-    if (is_bluetooth && *rsize >= 25) {
-        if (rdesc[14] == 0x19 && rdesc[15] == 0x01 && rdesc[16] == 0x29) {
-            hid_info(hdev, "Fixing up Rakk Dasig-X (Bluetooth) side buttons\n");
-            rdesc[17] = 0x05; 
-            rdesc[25] = 0x05; 
+    /* 2. Dongle & Bluetooth Surgical Fix:
+     * This patches the descriptor in-place without deleting Report IDs for DPI/Media keys.
+     * We look for the Button Usage Range pattern: 0x05 0x09 0x19 0x01 0x29 0x03
+     */
+    if ((is_bluetooth || (is_usb && hdev->product == USB_DEVICE_ID_RAKK_DASIG_X_DONGLE)) && *rsize >= 30) {
+        for (int i = 0; i < *rsize - 6; i++) {
+            if (rdesc[i] == 0x05 && rdesc[i+1] == 0x09 && rdesc[i+2] == 0x19 && 
+                rdesc[i+3] == 0x01 && rdesc[i+4] == 0x29 && rdesc[i+5] == 0x03) {
+                
+                hid_info(hdev, "Surgically fixing Rakk Dasig-X (%s) buttons\n", 
+                         is_bluetooth ? "Bluetooth" : "Dongle");
+                
+                rdesc[i+5] = 0x05; // Change Usage Max from 3 to 5
+                
+                /* Find the next Report Count (0x95) and change it from 5 to 5 
+                 * (ensures 5 bits are allocated for 5 buttons) */
+                if (rdesc[i+10] == 0x95) {
+                    rdesc[i+11] = 0x05;
+                }
+                break; 
+            }
         }
     }
+
     return rdesc;
 }
 
