@@ -1,0 +1,5 @@
+# udev rule to bind Rakk Dasig X device to the kernel module on plug
+# Copy this file to /etc/udev/rules.d/99-hid-rakk.rules and run `sudo udevadm control --reload`.
+# Replace idVendor/idProduct if your device differs.
+
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="248a", ATTR{idProduct}=="fb01", RUN+="/bin/sh -c 'echo 248a fb01 > /sys/bus/hid/drivers/rakk-dasig-x/new_id'"

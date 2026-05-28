@@ -76,6 +76,51 @@ Notes:
 - The repository includes a `dkms.conf` file configured to build the module using the same `make` target used here. If you change the Makefile build flags (for Clang/LLVM), re-copy the source to `/usr/src` before running `dkms build`.
 - If you prefer packaging, consider creating an AUR package that installs the module; that also persists across kernel updates when properly configured.
 
+## Troubleshooting DKMS failures
+
+- If you see an error like "Missing <kernel> kernel modules tree for module ..." during system updates, DKMS couldn't find the kernel headers/build tree for that kernel. Install the matching kernel headers for the kernel versions on your system (package names vary by distro).
+
+Example (CachyOS / Arch derivatives):
+
+```bash
+# install headers for the running kernel and LTS kernel (package names may differ)
+sudo pacman -S linux-cachyos-headers linux-cachyos-lts-headers
+
+# then ask DKMS to (re)build/install modules for all installed kernels
+sudo dkms autoinstall
+```
+
+- If you don't know the exact package names, search available header packages and install the ones that match the kernels reported by `uname -r` or from the upgrade logs.
+
+Automation: installer script and udev rule
+
+This repo includes a small installer script to automate copying the source to `/usr/src` and registering/building with DKMS, plus a sample udev rule to auto-bind the device when plugged.
+
+- Installer script: `scripts/install-dkms.sh` — run from the repo root with `sudo` to copy the source, add/build/install the DKMS module, and run `dkms autoinstall`.
+- Sample udev rule: `udev/99-hid-rakk.rules` — copy to `/etc/udev/rules.d/99-hid-rakk.rules` and reload udev with `sudo udevadm control --reload` to auto-bind the device IDs on plug. Edit the vendor/product IDs if yours differ.
+
+Note: the module's internal name uses underscores (`hid_rakk_dasig_x`) but the driver directory under `/sys/bus/hid/drivers` is `rakk-dasig-x`. If `new_id` does not exist under the `hid_rakk_dasig_x` path, use the `rakk-dasig-x` path instead — for example:
+
+```bash
+# bind device immediately (replace IDs if different)
+sudo sh -c 'echo 248a fa02 > /sys/bus/hid/drivers/rakk-dasig-x/new_id'
+```
+
+The included udev rule `udev/99-hid-rakk.rules` is configured to write to `/sys/bus/hid/drivers/rakk-dasig-x/new_id` so it will work with the installed module.
+
+Example usage:
+
+```bash
+# make script executable then run it
+chmod +x scripts/install-dkms.sh
+sudo ./scripts/install-dkms.sh
+
+# install udev rule (edit IDs if necessary)
+sudo cp udev/99-hid-rakk.rules /etc/udev/rules.d/
+sudo udevadm control --reload
+sudo udevadm trigger --action=add
+```
+
 # Credits
 
 This project is heavily inspired by the following projects:
