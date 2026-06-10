@@ -10,6 +10,7 @@ While it is possible to make this work on other distros and kernel versions, I c
 ### Distros and kernel versions tested and working (I'll put this list somewhere else in the repo eventually):
 
 - Cachy OS x86_64 (6.18.6-2-cachyos)
+- openSUSE Tumbleweed x86_64 (7.0.11-1-default)
 
 Also, for those looking to merge this into the kernel, I advise you to do it carefully since apparently the Vendor ID and Device ID for this is also used by others.
 See https://github.com/marcosjrvrael/hid-havit-mouse-module for example.
