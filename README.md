@@ -25,6 +25,48 @@ sudo make install
 # Manually load the driver for the first time
 sudo modprobe hid-rakk-dasig-x
 
+### openSUSE Tumbleweed
+
+Install dependencies:
+
+```bash
+sudo zypper install -y gcc make kmod zstd dkms mokutil openssl kernel-default-devel
+```
+
+Build/install for the running kernel:
+
+```bash
+make
+sudo make install
+sudo depmod -a
+sudo modprobe hid-rakk-dasig-x
+```
+
+For kernel-update persistence, prefer DKMS:
+
+```bash
+chmod +x scripts/install-dkms.sh
+sudo ./scripts/install-dkms.sh
+```
+
+If Secure Boot is enabled, install with module signing support:
+
+```bash
+sudo ./scripts/install-dkms.sh --secure-boot
+```
+
+Notes for Secure Boot:
+
+- The installer creates a local Machine Owner Key (MOK) at `/root/.secureboot/MOK.priv` and `/root/.secureboot/MOK.der` if they do not exist.
+- If the cert is not enrolled yet, the installer runs `mokutil --import`.
+- Reboot and complete MOK enrollment in firmware UI, then rerun:
+
+```bash
+sudo ./scripts/install-dkms.sh --secure-boot
+```
+
+- The script signs installed `hid-rakk-dasig-x.ko` files for detected kernels and runs `depmod`.
+
 ## Removal
 To remove the driver, use the following command:
 ```bash
