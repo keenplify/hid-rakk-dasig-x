@@ -17,14 +17,56 @@ See https://github.com/marcosjrvrael/hid-havit-mouse-module for example.
 
 ## Installation
 
-The following commands will build and install the driver.
-_Note: CachyOS users must use the LLVM toolchain flags as shown below:_
+### Fedora (recommended)
 
-````bash
-make CC=clang HOSTCC=clang LD=ld.lld LLVM=1
-sudo make install
-# Manually load the driver for the first time
+Install dependencies:
+
+```bash
+sudo dnf install -y gcc make kmod zstd dkms mokutil openssl kernel-devel elfutils-libelf-devel
+```
+
+Install with DKMS (persists across kernel updates):
+
+```bash
+chmod +x scripts/install-dkms.sh
+sudo ./scripts/install-dkms.sh
+```
+
+If Secure Boot is enabled, use signing mode:
+
+```bash
+sudo ./scripts/install-dkms.sh --secure-boot
+```
+
+Then reboot and enroll the imported MOK in firmware UI when prompted. After reboot, run:
+
+```bash
+sudo ./scripts/install-dkms.sh --secure-boot
 sudo modprobe hid-rakk-dasig-x
+```
+
+Secure Boot notes:
+
+- The installer creates a local MOK keypair at `/root/.secureboot/MOK.priv` and `/root/.secureboot/MOK.der` if missing.
+- If the cert is not enrolled, the script runs `mokutil --import`.
+- Unsigned modules are blocked when Secure Boot is enabled (`Key was rejected by service`).
+- Fedora DKMS signs modules with `/var/lib/dkms/mok.key` and uses `/var/lib/dkms/mok.pub` as the cert. If this key rotates (for example after DKMS reinstall), previously enrolled DKMS certs may no longer match new builds.
+
+Verify active DKMS key enrollment:
+
+```bash
+modinfo -F signer /lib/modules/$(uname -r)/extra/hid-rakk-dasig-x.ko.zst
+modinfo -F sig_key /lib/modules/$(uname -r)/extra/hid-rakk-dasig-x.ko.zst
+sudo mokutil --test-key /var/lib/dkms/mok.pub
+```
+
+If the test says `not enrolled`, import and reboot:
+
+```bash
+sudo mokutil --import /var/lib/dkms/mok.pub
+# reboot and complete MOK enrollment in firmware UI
+sudo modprobe hid-rakk-dasig-x
+```
 
 ### openSUSE Tumbleweed
 
@@ -34,7 +76,22 @@ Install dependencies:
 sudo zypper install -y gcc make kmod zstd dkms mokutil openssl kernel-default-devel
 ```
 
-Build/install for the running kernel:
+Install with DKMS:
+
+```bash
+chmod +x scripts/install-dkms.sh
+sudo ./scripts/install-dkms.sh
+```
+
+For Secure Boot:
+
+```bash
+sudo ./scripts/install-dkms.sh --secure-boot
+```
+
+### Manual build/install (no DKMS)
+
+Build and install for the running kernel only:
 
 ```bash
 make
@@ -43,36 +100,19 @@ sudo depmod -a
 sudo modprobe hid-rakk-dasig-x
 ```
 
-For kernel-update persistence, prefer DKMS:
+### CachyOS LLVM build
 
 ```bash
-chmod +x scripts/install-dkms.sh
-sudo ./scripts/install-dkms.sh
+make CC=clang HOSTCC=clang LD=ld.lld LLVM=1
+sudo make install
+sudo modprobe hid-rakk-dasig-x
 ```
-
-If Secure Boot is enabled, install with module signing support:
-
-```bash
-sudo ./scripts/install-dkms.sh --secure-boot
-```
-
-Notes for Secure Boot:
-
-- The installer creates a local Machine Owner Key (MOK) at `/root/.secureboot/MOK.priv` and `/root/.secureboot/MOK.der` if they do not exist.
-- If the cert is not enrolled yet, the installer runs `mokutil --import`.
-- Reboot and complete MOK enrollment in firmware UI, then rerun:
-
-```bash
-sudo ./scripts/install-dkms.sh --secure-boot
-```
-
-- The script signs installed `hid-rakk-dasig-x.ko` files for detected kernels and runs `depmod`.
 
 ## Removal
 To remove the driver, use the following command:
 ```bash
 sudo make uninstall
-````
+```
 
 If the driver is already loaded, you might want to unload it using the following command:
 
@@ -139,7 +179,7 @@ Automation: installer script and udev rule
 
 This repo includes a small installer script to automate copying the source to `/usr/src` and registering/building with DKMS, plus a sample udev rule to auto-bind the device when plugged.
 
-- Installer script: `scripts/install-dkms.sh` — run from the repo root with `sudo` to copy the source, add/build/install the DKMS module, and run `dkms autoinstall`.
+- Installer script: `scripts/install-dkms.sh` — run with `sudo` to copy the source, add/build/install the DKMS module, and run `dkms autoinstall`.
 - Sample udev rule: `udev/99-hid-rakk.rules` — copy to `/etc/udev/rules.d/99-hid-rakk.rules` and reload udev with `sudo udevadm control --reload` to auto-bind the device IDs on plug. Edit the vendor/product IDs if yours differ.
 
 Note: the module's internal name uses underscores (`hid_rakk_dasig_x`) but the driver directory under `/sys/bus/hid/drivers` is `rakk-dasig-x`. If `new_id` does not exist under the `hid_rakk_dasig_x` path, use the `rakk-dasig-x` path instead — for example:

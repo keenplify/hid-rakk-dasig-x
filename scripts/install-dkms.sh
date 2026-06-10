@@ -6,11 +6,21 @@ set -euo pipefail
 
 VER=1.0
 MODULE=hid-rakk-dasig-x
-SRC_DIR=$(pwd)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SRC_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
 DEST="/usr/src/${MODULE}-${VER}"
 SECURE_BOOT=0
 MOK_KEY="/root/.secureboot/MOK.priv"
 MOK_CERT="/root/.secureboot/MOK.der"
+DKMS_CERT="/var/lib/dkms/mok.pub"
+
+as_root() {
+	if [[ "${EUID}" -eq 0 ]]; then
+		"$@"
+	else
+		sudo "$@"
+	fi
+}
 
 usage() {
 	cat <<EOF
@@ -31,10 +41,18 @@ while [[ $# -gt 0 ]]; do
 			shift
 			;;
 		--mok-key)
+			if [[ $# -lt 2 ]]; then
+				echo "ERROR: --mok-key requires a path argument"
+				exit 1
+			fi
 			MOK_KEY="$2"
 			shift 2
 			;;
 		--mok-cert)
+			if [[ $# -lt 2 ]]; then
+				echo "ERROR: --mok-cert requires a path argument"
+				exit 1
+			fi
 			MOK_CERT="$2"
 			shift 2
 			;;
@@ -66,6 +84,39 @@ find_sign_tool() {
 	echo ""
 }
 
+secure_boot_enabled() {
+	mokutil --sb-state 2>/dev/null | grep -qi "enabled"
+}
+
+ensure_dkms_key_enrolled() {
+	if ! secure_boot_enabled; then
+		return
+	fi
+
+	if ! command -v mokutil >/dev/null 2>&1; then
+		echo "WARNING: Secure Boot is enabled but mokutil is not installed."
+		echo "Install mokutil and enroll ${DKMS_CERT} to allow DKMS modules to load."
+		return
+	fi
+
+	if [[ ! -f "${DKMS_CERT}" ]]; then
+		echo "WARNING: Secure Boot is enabled but ${DKMS_CERT} was not found."
+		echo "DKMS may not be able to load modules until a signing key is enrolled."
+		return
+	fi
+
+	if mokutil --test-key "${DKMS_CERT}" >/dev/null 2>&1; then
+		echo "DKMS MOK certificate is already enrolled."
+		return
+	fi
+
+	echo "Secure Boot is enabled and current DKMS key is not enrolled: ${DKMS_CERT}"
+	echo "Importing DKMS key with mokutil (you will set a one-time password)..."
+	as_root mokutil --import "${DKMS_CERT}"
+	echo "IMPORTANT: Reboot and complete MOK enrollment in firmware UI."
+	echo "After reboot, run: sudo modprobe hid-rakk-dasig-x"
+}
+
 sign_modules_for_secure_boot() {
 	local key="$1"
 	local cert="$2"
@@ -83,18 +134,18 @@ sign_modules_for_secure_boot() {
 
 	if [[ ! -f "$key" || ! -f "$cert" ]]; then
 		echo "MOK key/cert not found, generating new key pair..."
-		sudo mkdir -p "$(dirname "$key")"
-		sudo openssl req -new -x509 -newkey rsa:2048 \
+		as_root mkdir -p "$(dirname "$key")"
+		as_root openssl req -new -x509 -newkey rsa:2048 \
 			-keyout "$key" -out "$cert" -outform DER \
 			-nodes -days 36500 -subj "/CN=hid-rakk-dasig-x MOK/"
-		sudo chmod 600 "$key"
+		as_root chmod 600 "$key"
 	fi
 
 	if mokutil --sb-state 2>/dev/null | grep -qi "enabled"; then
 		if ! mokutil --test-key "$cert" >/dev/null 2>&1; then
 			echo "Secure Boot is enabled and MOK cert is not enrolled."
 			echo "Importing cert with mokutil (you will set a one-time password)..."
-			sudo mokutil --import "$cert"
+			as_root mokutil --import "$cert"
 			echo "IMPORTANT: Reboot and complete MOK enrollment in firmware UI, then run this script again."
 		fi
 	else
@@ -115,8 +166,8 @@ sign_modules_for_secure_boot() {
 		fi
 
 		echo "Signing ${module_path} using ${sign_tool}"
-		sudo "$sign_tool" sha256 "$key" "$cert" "$module_path"
-		sudo depmod -a "$kernel"
+		as_root "$sign_tool" sha256 "$key" "$cert" "$module_path"
+		as_root depmod -a "$kernel"
 		any_signed=1
 	done
 
@@ -129,20 +180,33 @@ sign_modules_for_secure_boot() {
 
 echo "Installing ${MODULE} (version ${VER}) to DKMS..."
 
-sudo rm -rf "${DEST}"
-sudo cp -r "${SRC_DIR}" "${DEST}"
-
-# Remove previous DKMS instance only if present.
-if sudo dkms status -m "${MODULE}" -v "${VER}" | grep -q "${MODULE}/${VER}"; then
-	sudo dkms remove -m "${MODULE}" -v "${VER}" --all
+if [[ ! -f "${SRC_DIR}/dkms.conf" ]]; then
+	echo "ERROR: dkms.conf not found at ${SRC_DIR}/dkms.conf"
+	echo "Run this script from an unpacked project tree that contains dkms.conf."
+	exit 1
 fi
 
-sudo dkms add -m ${MODULE} -v ${VER}
-sudo dkms build -m ${MODULE} -v ${VER}
-sudo dkms install -m ${MODULE} -v ${VER}
+if secure_boot_enabled && [[ "$SECURE_BOOT" -eq 0 ]]; then
+	echo "WARNING: Secure Boot appears enabled. Unsigned modules will fail to load."
+	echo "Re-run with: sudo ./scripts/install-dkms.sh --secure-boot"
+fi
+
+as_root rm -rf "${DEST}"
+as_root cp -r "${SRC_DIR}" "${DEST}"
+
+# Remove previous DKMS instance only if present.
+if as_root dkms status -m "${MODULE}" -v "${VER}" | grep -q "${MODULE}/${VER}"; then
+	as_root dkms remove -m "${MODULE}" -v "${VER}" --all
+fi
+
+as_root dkms add -m ${MODULE} -v ${VER}
+as_root dkms build -m ${MODULE} -v ${VER}
+as_root dkms install -m ${MODULE} -v ${VER}
 
 echo "Running dkms autoinstall to ensure all kernels are covered..."
-sudo dkms autoinstall
+as_root dkms autoinstall
+
+ensure_dkms_key_enrolled
 
 if [[ "$SECURE_BOOT" -eq 1 ]]; then
 	echo "Secure Boot mode enabled: setting up MOK and signing installed modules..."
@@ -150,6 +214,6 @@ if [[ "$SECURE_BOOT" -eq 1 ]]; then
 fi
 
 echo "Done. To manually bind a device use the new_id method (example IDs):"
-echo "  sudo sh -c 'echo 248a fb01 > /sys/bus/hid/drivers/hid_rakk_dasig_x/new_id'"
+echo "  sudo sh -c 'echo 248a fb01 > /sys/bus/hid/drivers/rakk-dasig-x/new_id'"
 
 echo "If you want a udev rule to bind on plug, see udev/99-hid-rakk.rules in the repo."
